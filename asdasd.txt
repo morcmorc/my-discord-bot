@@ -1,0 +1,95 @@
+const fs = require('fs');
+const path = require('path');
+const { Client, GatewayIntentBits, Collection, Events } = require('discord.js');
+const { addSpeechEvent, SpeechEvents } = require('discord-speech-recognition');
+const { token, ownerId } = require('./config.json');
+const { joinVoiceChannel } = require("@discordjs/voice");
+
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.GuildVoiceStates, 
+        GatewayIntentBits.MessageContent
+    ] 
+});
+// add speach event
+addSpeechEvent(client);
+
+// Create a collection (map) for commands
+client.commands = new Collection();
+
+// Function to load commands
+function loadCommands() {
+    const commandsPath = path.join(__dirname, 'commands');
+    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+    for (const file of commandFiles) {
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        client.commands.set(command.name, command);
+    }
+}
+
+// Initial load of commands
+loadCommands();
+
+client.once('ready', () => {
+    console.log('Bot is ready!');
+});
+
+client.on('messageCreate', message => {
+    // Ignore messages from bots
+    if (message.author.bot) return;
+
+    // Check if the message starts with your command prefix
+    const prefix = '!';
+    if (!message.content.startsWith(prefix)) return;
+
+    // Parse the command name and arguments from the message
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const commandName = args.shift().toLowerCase();
+
+    // Check if the command exists in the collection
+    const command = client.commands.get(commandName);
+    if (!command) return;
+
+    try {
+        // Execute the command
+        command.execute(message, args);
+    } catch (error) {
+        console.error(error);
+        message.reply('There was an error trying to execute that command!');
+    }
+});
+
+//_________________________________________________________________________________________________//
+
+client.on(Events.MessageCreate, (msg) => {
+    const voiceChannel = msg.member?.voice.channel;
+    if (voiceChannel) {
+      joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: voiceChannel.guild.id,
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+        selfDeaf: false,
+      });
+    }
+});
+
+client.on(SpeechEvents.speech, (msg) => {
+    // If bot didn't recognize speech, content will be empty
+    if (!msg.content) return;
+  
+    msg.author.send(msg.content);
+});
+
+// // Function to reload commands
+// client.on('messageCreate', message => {
+//     if (message.content === '!reload' && message.author.id === ownerId) {
+//         loadCommands();
+//         message.channel.send('Commands reloaded!');
+//     }
+// });
+
+client.login(token);
